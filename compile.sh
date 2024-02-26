@@ -1,7 +1,13 @@
 # llama-2
-MODEL_NAME=Llama-2-7b-chat-hf
+# MODEL_NAME=Llama-2-13b-chat-hf
+# QUANTIZATION=q4f16_0
+# CONV_TEMP=llama-2
+# CONTEXT_WINDOW_SIZE=768
+
+# gemma
+MODEL_NAME=gemma-2b-it
 QUANTIZATION=q4f16_0
-CONV_TEMP=llama-2
+CONV_TEMP=gemma_instruction
 CONTEXT_WINDOW_SIZE=768
 
 # convert weights
