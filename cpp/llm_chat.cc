@@ -247,6 +247,7 @@ struct FunctionTable {
   void _InitFunctions() {
     this->prefill_func_ = mod_get_func("prefill");
     this->embed_func_ = mod_get_func("embed");
+    this->embed_with_pixel_values_func_ = mod_get_func("embed_with_pixel_values");
     this->prefill_with_embed_func_ = mod_get_func("prefill_with_embed");
     this->decode_func_ = mod_get_func("decode");
     this->softmax_func_ = mod_get_func("softmax_with_temperature");
@@ -319,6 +320,7 @@ struct FunctionTable {
 
   PackedFunc prefill_func_;
   PackedFunc embed_func_;
+  PackedFunc embed_with_pixel_values_func_;
   PackedFunc prefill_with_embed_func_;
   PackedFunc decode_func_;
   PackedFunc encoding_without_cache_func_;
@@ -909,7 +911,7 @@ class LLMChat {
    */
   void PrefillStep(std::string inp, bool append_conversation = true, bool decode_next_token = true,
                    PlaceInPrompt place_in_prompt = PlaceInPrompt::kAll,
-                   String generation_config_str = "") {
+                   String generation_config_str = "", NDArray pixel_values = NDArray()) {
     if (ft_.embed_func_.defined() && ft_.prefill_with_embed_func_.defined()) {
       // Temporarily placed inside `PrefillStep` for compatibility in transition.
       // Will be separated out in the future.
@@ -947,7 +949,7 @@ class LLMChat {
         std::vector<int32_t> chunk =
             std::vector<int32_t>(prompt_tokens.begin() + begin, prompt_tokens.begin() + end);
         new_seq_len += static_cast<int64_t>(chunk.size());
-        logits_on_device = this->ForwardTokens(chunk, new_seq_len);
+        logits_on_device = this->ForwardTokens(chunk, new_seq_len, pixel_values);
 
         // update window cache offset (prefill)
         if (this->sliding_window_size_ != -1) {
@@ -1332,16 +1334,32 @@ class LLMChat {
   }
 
   // run forward compute
-  NDArray ForwardTokens(std::vector<int32_t> input_tokens, int64_t cur_pos) {
+  NDArray ForwardTokens(std::vector<int32_t> input_tokens, int64_t cur_pos, NDArray pixel_values = NDArray()) {
+) {
     ObjectRef ret{nullptr};
     if (input_tokens.size() > 1 && ft_.prefill_func_.defined()) {
       ObjectRef input_data = ft_.CopyToWorker0(this->GetInputTokenNDArray(input_tokens));
       if (sliding_window_size_ == -1) {
         if (ft_.use_paged_kv_cache) {
+
+           NDArray embed;
+          if (this->conversation_.use_pixel_values) {
+            int image_count = std::count(input_tokens.begin(), input_tokens.end(),
+                                         this->conversation_.image_token_index);
+            if (image_count == 0) {
+              embed = ft_.embed_func_(input_data, params_);
+            } else if (image_count == 1) {
+              embed = ft_.embed_with_pixel_values_func_(ft_.CopyToWorker0(pixel_values), input_data,
+                                                        params_);
+            }
+          } else {
+            embed = ft_.embed_func_(input_data, params_);
+          }
+
           IntTuple seq_ids_tuple({0});
-          ShapeTuple input_len_shape = ShapeTuple({static_cast<int64_t>(input_tokens.size())});
+          ShapeTuple input_len_shape = ShapeTuple({static_cast<int64_t>(embed.Shape()[1])});
           ft_.kv_cache_begin_forward_func_(kv_cache_, seq_ids_tuple, input_len_shape);
-          auto embed = ft_.embed_func_(input_data, params_);
+          // auto embed = ft_.embed_func_(input_data, params_);
           ret = ft_.prefill_func_(embed, kv_cache_, params_);
           ft_.kv_cache_end_forward_func_(kv_cache_);
         } else {
@@ -1374,10 +1392,25 @@ class LLMChat {
         ShapeTuple pos_shape = ShapeTuple({pos});
         if (sliding_window_size_ == -1) {
           if (ft_.use_paged_kv_cache) {
+
+            NDArray embed;
+            if (this->conversation_.use_pixel_values) {
+              int image_count = std::count(input_tokens.begin(), input_tokens.end(),
+                                           this->conversation_.image_token_index);
+              if (image_count == 0) {
+                embed = ft_.embed_func_(input_data, params_);
+              } else if (image_count == 1) {
+                embed = ft_.embed_with_pixel_values_func_(ft_.CopyToWorker0(pixel_values),
+                                                          input_data, params_);
+              }
+            } else {
+              embed = ft_.embed_func_(input_data, params_);
+            }
+
             IntTuple seq_ids_tuple({0});
-            IntTuple append_length({1});
+            // IntTuple append_length({1});
             ft_.kv_cache_begin_forward_func_(kv_cache_, seq_ids_tuple, append_length);
-            auto embed = ft_.embed_func_(input_data, params_);
+            // auto embed = ft_.embed_func_(input_data, params_);
             ret = ft_.decode_func_(embed, kv_cache_, params_);
             ft_.kv_cache_end_forward_func_(kv_cache_);
           } else {
@@ -1651,7 +1684,7 @@ class LLMChatModule : public ModuleNode {
       });
     } else if (name == "prefill") {
       return PackedFunc([this, sptr_to_self](TVMArgs args, TVMRetValue* rv) {
-        ICHECK(1 <= args.size() && args.size() <= 4);
+        ICHECK(1 <= args.size() && args.size() <= 5);
         if (args.size() == 1) {
           // args: inp (with decode_next_token = true, place_in_prompt = kAll)
           GetChat()->PrefillStep(args[0]);
@@ -1666,6 +1699,10 @@ class LLMChatModule : public ModuleNode {
           // args: inp, decode_next_token, place_in_prompt, generation_config_str
           PlaceInPrompt place_in_prompt = static_cast<PlaceInPrompt>(static_cast<int>(args[2]));
           GetChat()->PrefillStep(args[0], true, args[1], place_in_prompt, args[3]);
+        } else if (args.size() == 5) {
+          // args: inp, decode_next_token, place_in_prompt, generation_config_str, pixel_values
+          PlaceInPrompt place_in_prompt = static_cast<PlaceInPrompt>(static_cast<int>(args[2]));
+          GetChat()->PrefillStep(args[0], true, args[1], place_in_prompt, args[3], args[4]);
         }
       });
     } else if (name == "embed") {

@@ -719,6 +719,27 @@ Conversation GemmaInstruction() {
   return conv;
 }
 
+Conversation Llava() {
+  Conversation conv;
+  conv.name = "llava";
+  conv.system = "";
+  conv.roles = {"USER", "ASSISTANT"};
+  conv.messages = {};
+  conv.offset = 0;
+  conv.separator_style = SeparatorStyle::kSepRoleMsg;
+  conv.seps = {" "};
+  conv.role_msg_sep = ": ";
+  conv.role_empty_sep = ":";
+  // TODO(mlc-team): add eos to mlc-chat-config
+  // and remove eos from stop token setting.
+  conv.stop_tokens = {2};
+  conv.stop_str = "</s>";
+  conv.add_bos = true;
+  conv.use_pixel_values = true;
+  conv.image_token_index = 32000;
+  return conv;
+}
+
 }  // namespace
 
 using ConvFactory = Conversation (*)();
@@ -758,7 +779,8 @@ Conversation Conversation::FromTemplate(const std::string& name) {
       {"qwen", ChatML},
       {"stablelm-2", StableLM2},
       {"baichuan", ChatML},
-      {"gemma_instruction", GemmaInstruction},
+      {"gemma_instruction", GemmaInstruction}
+      {"llava", Llava},
   };
   auto it = factory.find(name);
   if (it == factory.end()) {
