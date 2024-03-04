@@ -591,7 +591,7 @@ class LLMChat {
     // Step 1. Process config json string.
     picojson::object model_config;
     {
-      std::ifstream config_istream((model_path + "/mlc-chat-config.json").c_str());
+      std::ifstream config_istream((model_path + "/chat-config.json").c_str());
       std::ostringstream config_ostream;
       ICHECK(config_istream);
       config_ostream << config_istream.rdbuf();

@@ -32,6 +32,7 @@
     }
   ],
   "model_lib_path_for_prepare_libs": {
-    "gemma_q4f16_0": "gemma-2b-it-q4f16_0/gemma-2b-it-q4f16_0-android.tar"
+    "gemma_q4f16_0": "gemma-2b-it-q4f16_0/gemma-2b-it-q4f16_0-android.tar",
+    "Mistral-7B-Instruct-v0.2-q4f16_0": "Mistral-7B-Instruct-v0.2-q4f16_0/Mistral-7B-Instruct-v0.2-q4f16_0-android.tar"
   }
 }
